@@ -6,31 +6,31 @@ $$
 \tag {1}$$
 这其中${\bf q}$是一个描述机器人主体及各个节点的广义位置矢量：
 $$
-{\bf q}= \begin{bmatrix}_I {\bf r}_{IB} \\ {\bf q}_{IB} \\ {\bf q}_j\end{bmatrix} \in SE(3)\times {\Bbb R}^{n_j}
+{\bf q}= \begin{bmatrix}_I {\bf r}_{IB} \\ {\bf q}_{IB} \\ {\bf q}_j\end{bmatrix} \in SE(3)\times {\mathbb R}^{n_j}
 \tag {1:1}$$
-它里面$_I {\bf r}_{IB} \in {\Bbb R}^{3}$是机器人主体相对于惯性系的三维位置矢量；${\bf q}_{IB} \in SO(3)$是机器人主体相对于惯性系的转动描述，用哈密顿单位四元数表示的；${\bf q}_j \in {\Bbb R}^{n_j}$是一个储存机器人所有节点角度的$n_j$维矢量。
-不过我还是不太清楚$\bf q$也就是$SE(3)\times {\Bbb R}^{n_j}$到底是一个什么形状的矩阵？单纯看表达的话他应该是一个$3+4+n_j$维的矢量，包含了整个机器人的所有位置有关的状态信息。它似乎不用直接参与运算，因此可以先放一放，重要的是$SE(3)\times {\Bbb R}^{n_j}$的含义到底是什么需要好好理解一下。
+它里面$_I {\bf r}_{IB} \in {\mathbb R}^{3}$是机器人主体相对于惯性系的三维位置矢量；${\bf q}_{IB} \in SO(3)$是机器人主体相对于惯性系的转动描述，用哈密顿单位四元数表示的；${\bf q}_j \in {\mathbb R}^{n_j}$是一个储存机器人所有节点角度的$n_j$维矢量。
+不过我还是不太清楚$\bf q$也就是$SE(3)\times {\mathbb R}^{n_j}$到底是一个什么形状的矩阵？单纯看表达的话他应该是一个$3+4+n_j$维的矢量，包含了整个机器人的所有位置有关的状态信息。它似乎不用直接参与运算，因此可以先放一放，重要的是$SE(3)\times {\mathbb R}^{n_j}$的含义到底是什么需要好好理解一下。
 这其中${\bf u}$是一个描述机器人主体及各个节点的广义速度矢量：
 $$
-{\bf u}= \begin{bmatrix}_I{\bf v}_B \\ _B{\bf \omega}_{IB} \\ {\bf \dot q}_j \end{bmatrix} \in {\Bbb R}^{n_u} 
+{\bf u}= \begin{bmatrix}_I{\bf v}_B \\ _B{\bf \omega}_{IB} \\ {\bf \dot q}_j \end{bmatrix} \in {\mathbb R}^{n_u} 
 \tag {1:2}$$
 它里面的$_I{\bf v}_B$描述了机器人主体相对于惯性系的速度；$_B{\bf \omega}_{IB}$描述了机器人主体相对于自身的角速度；${\bf \dot q}_j$描述了机器人的各个关节转动的速度。
 这其中${\bf M}$是一个关于机器人整体的质量矩阵，它是一个$n_u \times n_u$的矩阵： 
-$${\bf M} \in {\Bbb R}^{n_u \times n_u} \tag{1:3}$$
+$${\bf M} \in {\mathbb R}^{n_u \times n_u} \tag{1:3}$$
 这个质量矩阵的具体数值跟机器人的机械系统的状态（各个节点的位置${\bf q}$）相关，可以通过通用的方式计算出它的表达式。实际计算的时候只需要带入${\bf q}$的值，就可以计算出${\bf M}$矩阵的各个元素具体数值。
 这其中${\bf h}$是一个跟机器人的机械位置和速度都有关的量，包含了机械系统产生的克里奥利力、离心力和重力的作用，它是一个$n_u$维的矢量：
-$${\bf h} \in {\Bbb R}^{n_u} \tag{1:4}$$
+$${\bf h} \in {\mathbb R}^{n_u} \tag{1:4}$$
 它的具体计算方式我现在还不是很清楚。
 这其中${\bf S}$是一个选择矩阵，可以用来选择整个公式中哪些自由度被激活，它是一个$n_{\tau} \times n_u$的矩阵：
-$${\bf S} = \begin{bmatrix}{\bf 0}_{n_{\tau} \times (n_u - n_{\tau})} & {\Bbb I}_{n_{\tau} \times n_{\tau}}\end{bmatrix} \in {\Bbb R}^{n_{\tau} \times n_u} 
+$${\bf S} = \begin{bmatrix}{\bf 0}_{n_{\tau} \times (n_u - n_{\tau})} & {\mathbb I}_{n_{\tau} \times n_{\tau}}\end{bmatrix} \in {\mathbb R}^{n_{\tau} \times n_u} 
 \tag{1:5}$$
 它其中包含的参数$n_{\tau}$表示被激活的自由度数量，如果机器人的所有自由度都被激活，则$n_{\tau} = n_j$。
 这其中${\bf \tau}$是机器人各个关节的电机提供的扭矩，它是一个$n_j$维的向量：
-$${\bf \tau} \in {\Bbb R}^{n_j} 
+$${\bf \tau} \in {\mathbb R}^{n_j} 
 \tag{1:6}$$
 它的节点成员是否产生作用受到${\bf S}^T$矩阵的选择。
 这其中${\bf J}_S$是一些列雅可比矩阵的集合：
-$$J_S=\begin{bmatrix}J^T_{C_1} & ... & J^T_{C_{n_c}}\end{bmatrix}^T  \in {\Bbb R}^{3n_c\times n_u}$$ 
+$$J_S=\begin{bmatrix}J^T_{C_1} & ... & J^T_{C_{n_c}}\end{bmatrix}^T  \in {\mathbb R}^{3n_c\times n_u}$$ 
 它是接触点的支撑力${\bf \lambda}$向节点力转换的矩雅可比矩阵，包含了$n_c$个雅可比矩阵，$n_c$为接触地面的肢体个数。
 
 ## 1. 质心运动(CoM Motion)问题表述
@@ -54,7 +54,7 @@ $$\begin{align}
 对于质心在$y,\, z$方向上的描述是一样的。每一条质心曲线都由$x,y,z$三部分分量${\bf \alpha}_i = \begin{bmatrix}{{\bf \alpha}_i^x}^T & {{\bf \alpha}_i^y}^T & {{\bf \alpha}_i^z}^T\end{bmatrix}^T$组成，可以将$n_s$条质心曲线的$3n_s$条曲线参数写到一起，优化的参数矢量可以写成：${\bf \alpha} = \begin{bmatrix}{\bf \alpha}_0^T & ...& {\bf \alpha}_i^T &...& {\bf \alpha}_{n_s}^T\end{bmatrix}^T$。
 这样一来，质心的位置可以表示为：
 $$
-{\bf p}_{CoM}(t) = {\bf T}(t){\bf \alpha}_i \in{\Bbb R}^3
+{\bf p}_{CoM}(t) = {\bf T}(t){\bf \alpha}_i \in{\mathbb R}^3
 , \quad
 {\bf T}(t) = 
 \begin{bmatrix}
@@ -64,8 +64,8 @@ $$
 \end{bmatrix}\tag{5}$$
 同样质心的速度和位置也可以得到了：
 $$\begin{align}
-{\bf \dot p}_{CoM}(t) = {\bf \dot T}(t){\bf \alpha}_i \in{\Bbb R}^3 \\
-{\bf \ddot p}_{CoM}(t) = {\bf \ddot T}(t){\bf \alpha}_i \in{\Bbb R}^3
+{\bf \dot p}_{CoM}(t) = {\bf \dot T}(t){\bf \alpha}_i \in{\mathbb R}^3 \\
+{\bf \ddot p}_{CoM}(t) = {\bf \ddot T}(t){\bf \alpha}_i \in{\mathbb R}^3
 \end {align}$$
 
 ## 2. 质心运动优化
@@ -180,7 +180,7 @@ t= arg\, min_{\bf W}||{\bf p}(t)-{\bf p}_{meas}||_2^2
 建立如下二次规划问题：
 $$\underset{\bf \xi}{min}\quad \frac{1}{2}{\bf \xi}^T {\bf Q}{\bf \xi}+{\bf c}^T{\bf \xi} \quad s. t. \quad {\bf D}{\bf \xi}\leq {\bf f}
 \tag{19}$$
-这里面${\bf \xi}\in {\Bbb R}^{2n_{feet}}$是裸足点${\bf p}_{f_i}$的$x,y$方向分量，其中$i=1,...,n_{feet}$，$n_{feet}=4$是机器所有脚的总数。与 CoM 运动规划器所做的类似，我们并行优化主控制回路。因此，每当新的优化准备好时，我们都会更新立足点计划。
+这里面${\bf \xi}\in {\mathbb R}^{2n_{feet}}$是裸足点${\bf p}_{f_i}$的$x,y$方向分量，其中$i=1,...,n_{feet}$，$n_{feet}=4$是机器所有脚的总数。与 CoM 运动规划器所做的类似，我们并行优化主控制回路。因此，每当新的优化准备好时，我们都会更新立足点计划。
 ### a. _成本函数_
 相对于默认的战力姿势配置，用户可以自定义一个落脚点位置。这个可以解释为落脚点优化问题的一个正则化项。（正则化的概念需要熟悉一下？）
 为了跟踪默认落脚点的位置${\bf p}_{ref_i}$我们为成本函数$(19)$添加下述表述：
@@ -210,7 +210,7 @@ $$\begin{bmatrix}
 {\bf M}_{fb} & - {\bf J}_{s_{fb}}^T \end{bmatrix} {\bf \xi}_d = - {\bf h}_{fb}
 \tag{3}$$
 > $XXX_{fb}$: 下标的意思是浮动的主体-'floating base'
-* ${\bf \xi}_d$是一个一个$n_u+n_c$行$1$列的向量： ${\bf \xi}_d = \begin{bmatrix} {\bf u}_d^T & {\bf \lambda}_d^T \end{bmatrix} \in {\Bbb R}^{n_u+n_c}$，其中${\bf u}_d^T$是目标节点的加速度，${\bf \lambda}_d^T$是目标接触力；
+* ${\bf \xi}_d$是一个一个$n_u+n_c$行$1$列的向量： ${\bf \xi}_d = \begin{bmatrix} {\bf u}_d^T & {\bf \lambda}_d^T \end{bmatrix} \in {\mathbb R}^{n_u+n_c}$，其中${\bf u}_d^T$是目标节点的加速度，${\bf \lambda}_d^T$是目标接触力；
 * ${\bf M}_{fb}$是复合型惯性矩阵的前六行；啥是复合惯性矩阵？
 * ${\bf J}_{s_{fb}}^T$是雅克比阵的前六行，它将接触力转换到节点的扭矩；
 * ${\bf h}_{fb}$是非线性项的前六行，包括克里奥利力、离心力和重力项；
@@ -269,7 +269,7 @@ _C{\bf J}_R & {\bf 0}
 可以通过下面的方法将接触力设置为最小值：
 $$
 \begin{bmatrix}
-{\bf 0}_{3n_c \times n_u} & {\Bbb I}_{3n_c \times 3n_c}
+{\bf 0}_{3n_c \times n_u} & {\mathbb I}_{3n_c \times 3n_c}
 \end{bmatrix}
 {\bf \xi}_d = 0
 \tag{9}$$
@@ -282,4 +282,4 @@ $$
 $${\bf \tau}_d = \begin{bmatrix} {\bf M}_j & -{\bf J}^T_{s_j}\end{bmatrix} {\bf \xi}_d + {\bf h}_j$$
 其中${\bf M}_j,\, -{\bf J}^T_{s_j}, \, {\bf h}_j$在公式$(6)$已中定义。
 > 因此，所有规划的目的就是给出节点的运动加速度${\bf \dot u}_d^T$和接触力${\bf \lambda}_d^T$。
-> 
+>
