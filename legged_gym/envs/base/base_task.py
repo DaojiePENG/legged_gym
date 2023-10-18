@@ -58,7 +58,7 @@ class BaseTask():
             self.graphics_device_id = -1
 
         self.num_envs = cfg.env.num_envs
-        self.num_obs = cfg.env.num_observations
+        self.num_obs = cfg.env.num_observations # 这个定义了有多少输入观测值（整个策略的输入参数数量），比如控制指令、自身感知、外部感知等。
         self.num_privileged_obs = cfg.env.num_privileged_obs
         self.num_actions = cfg.env.num_actions
 
@@ -67,7 +67,7 @@ class BaseTask():
         torch._C._jit_set_profiling_executor(False)
 
         # allocate buffers
-        self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float)
+        self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float) # observation buffer 初始化
         self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -99,9 +99,21 @@ class BaseTask():
                 self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
 
     def get_observations(self):
+        '''
+        这个参数定义了有多少输入观测值（整个策略的输入参数数量），比如控制指令、自身感知、外部感知等。
+        所有的输入都放在这个 obs_buf 里面，用它作为神经网络的输入，就可以获得动作控制的输出值。
+        因此 obs_buf 的内部信息格式值得关注，也即诸如控制指令、自身感知、外部感知这些信息的赋值格式、空间占用大小和排列结构。
+
+        这个 obs_buf 将在 LeggedRobot 类中的 compute_observations 函数中进行定义。
+        '''
         return self.obs_buf
     
     def get_privileged_observations(self):
+        '''
+        这个特权观测信息，跟上面的观测信息作用一样。不过特权信息往往只能在仿真中使用，作为训练 teacher 策略的额外输入信息。
+        部署到实际机器人的策略不具备特权观测信息的输入，它的策略通常是模仿 teacher 策略而训练的 student 策略。
+        student 策略采用监督学习的方式进行训练，输入为实际机器人可获得的观测信息，比较对象是 teacher 策略。
+        '''
         return self.privileged_obs_buf
 
     def reset_idx(self, env_ids):
@@ -115,6 +127,10 @@ class BaseTask():
         return obs, privileged_obs
 
     def step(self, actions):
+        '''
+        这个函数将在 LeggedRobot 类里面进行具体实现。
+        它的实现包括提供仿真观测窗口、仿真信息的更新、扭矩计算、奖励计算、终止条件检测和处理、观测值测量等。
+        '''
         raise NotImplementedError
 
     def render(self, sync_frame_time=True):

@@ -73,6 +73,8 @@ class TaskRegistry():
         '''
         这个函数只在 play.py 和 test_env.py 使用到了，应该是从 name 关键名称提取相应的配置。
         也就是说这个 train_cfgs[name] 是一个保存了各个机器人配置的字典。它包括了所有用 task_registry 注册过的机器人配置的配置。
+        
+        实际使用时会根据提供的 name 从 train_cfgs[name] 中提取特定的机器人配置 train_cfg 进行赋值。
         '''
         train_cfg = self.train_cfgs[name]
         env_cfg = self.env_cfgs[name]
@@ -168,6 +170,11 @@ class TaskRegistry():
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume
         if resume:
+            '''
+            这个就是当训练好了模型后，希望载入训练好的模型参数来直接使用的情况。
+            也是返回一个可调用的 runner ，也就是一个包含很多函数的神经网络类，只不过这时只会使用其中获取动作控制目标值的函数。
+            实际使用的时候调用它的 get_inference_policy 函数就可以了。如 play.py 中的使用一样。
+            '''
             # load previously trained model
             resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
             print(f"Loading model from: {resume_path}")

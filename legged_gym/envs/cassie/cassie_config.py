@@ -33,7 +33,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class CassieRoughCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env):
         num_envs = 4096
-        num_observations = 169
+        num_observations = 169 # 这个定义了有多少输入观测值（整个策略的输入参数数量），比如控制指令、自身感知、外部感知等。
         num_actions = 12
 
     

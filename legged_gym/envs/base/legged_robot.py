@@ -208,6 +208,7 @@ class LeggedRobot(BaseTask):
     
     def compute_observations(self):
         """ Computes observations
+        在这里定义了 observation 的结构，也为它的内存 obs_buf 进行了赋值。
         """
         self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
@@ -525,12 +526,16 @@ class LeggedRobot(BaseTask):
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_dofs):
-            name = self.dof_names[i]
+            # 将 config 中定义的节点初始化位置赋值给gym中的节点；
+            # 节点的名称来自 create_envs 函数导入到 gym 空间的提取名称；
+            # 因此在 config 中定义的初始化节点名称要与之对应；
+            name = self.dof_names[i] 
             angle = self.cfg.init_state.default_joint_angles[name]
             self.default_dof_pos[i] = angle
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
+                    # 给节点定义刚度和阻尼
                     self.p_gains[i] = self.cfg.control.stiffness[dof_name]
                     self.d_gains[i] = self.cfg.control.damping[dof_name]
                     found = True
@@ -539,7 +544,7 @@ class LeggedRobot(BaseTask):
                 self.d_gains[i] = 0.
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
-        self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self.default_dof_pos = self.default_dof_pos.unsqueeze(0) # 这个转换后用于计算无命令情况的奖励
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -639,6 +644,7 @@ class LeggedRobot(BaseTask):
         asset_options.thickness = self.cfg.asset.thickness
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
+        # 在这里载入 urdf 文件到 gym 空间并获取相应的自由度节点数量及其名称
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
@@ -653,9 +659,11 @@ class LeggedRobot(BaseTask):
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
+            # 从 config 文件中提取定义的惩罚碰撞条件，这里是名称定义，下面有 gym 中的实现
             penalized_contact_names.extend([s for s in body_names if name in s])
         termination_contact_names = []
         for name in self.cfg.asset.terminate_after_contacts_on:
+            # 从 config 文件中提取定义的终止碰撞条件，这里是名称定义，下面有 gym 中的实现
             termination_contact_names.extend([s for s in body_names if name in s])
 
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
@@ -788,11 +796,13 @@ class LeggedRobot(BaseTask):
             [type]: [description]
         """
         if self.cfg.terrain.mesh_type == 'plane':
+            # 当是平地的时候高度测量结果都为零
             return torch.zeros(self.num_envs, self.num_height_points, device=self.device, requires_grad=False)
         elif self.cfg.terrain.mesh_type == 'none':
             raise NameError("Can't measure height with terrain mesh type 'none'")
 
         if env_ids:
+            # 这里为什么要添加 yaw 呢？
             points = quat_apply_yaw(self.base_quat[env_ids].repeat(1, self.num_height_points), self.height_points[env_ids]) + (self.root_states[env_ids, :3]).unsqueeze(1)
         else:
             points = quat_apply_yaw(self.base_quat.repeat(1, self.num_height_points), self.height_points) + (self.root_states[:, :3]).unsqueeze(1)
@@ -801,9 +811,10 @@ class LeggedRobot(BaseTask):
         points = (points/self.terrain.cfg.horizontal_scale).long()
         px = points[:, :, 0].view(-1)
         py = points[:, :, 1].view(-1)
-        px = torch.clip(px, 0, self.height_samples.shape[0]-2)
+        px = torch.clip(px, 0, self.height_samples.shape[0]-2) # 将 px 的值限制在 0 到 self.height_samples.shape[0]-2 之间；
         py = torch.clip(py, 0, self.height_samples.shape[1]-2)
 
+        # 为什么要有下面的操作呢？
         heights1 = self.height_samples[px, py]
         heights2 = self.height_samples[px+1, py]
         heights3 = self.height_samples[px, py+1]

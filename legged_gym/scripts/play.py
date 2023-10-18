@@ -52,11 +52,11 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    obs = env.get_observations()
+    obs = env.get_observations() # 这个 obs_buf 在 LeggedRobot 类中的 compute_observations 函数中进行定义。
     # load policy
-    train_cfg.runner.resume = True
+    train_cfg.runner.resume = True # 设置这个值为 True 就会直接载入已经训练好的模型，而不是开启新的训练。
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    policy = ppo_runner.get_inference_policy(device=env.device) # 这个载入的策略是训练好的吗？
+    policy = ppo_runner.get_inference_policy(device=env.device) # 这个载入的策略是训练好的吗？是的，这是在 task_registry 中定义的重载情况（前面的 resume=True 定义）。
     
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
@@ -75,7 +75,7 @@ def play(args):
     img_idx = 0
 
     for i in range(10*int(env.max_episode_length)):
-        actions = policy(obs.detach()) # 使用策略计算动作
+        actions = policy(obs.detach()) # 使用策略计算动作，也就是赋值给电机的控制指令：‘P’，‘V’，‘T’等形式
         obs, _, rews, dones, infos = env.step(actions.detach())
         if RECORD_FRAMES:
             if i % 2:
