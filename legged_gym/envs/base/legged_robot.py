@@ -210,16 +210,16 @@ class LeggedRobot(BaseTask):
         """ Computes observations
         在这里定义了 observation 的结构，也为它的内存 obs_buf 进行了赋值。
         """
-        self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
-                                    self.base_ang_vel  * self.obs_scales.ang_vel,
-                                    self.projected_gravity,
-                                    self.commands[:, :3] * self.commands_scale,
-                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                                    self.dof_vel * self.obs_scales.dof_vel,
-                                    self.actions
-                                    ),dim=-1)
+        self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel, # 基体线速度 3
+                                    self.base_ang_vel  * self.obs_scales.ang_vel, # 基体角速度 3
+                                    self.projected_gravity, # 基体重力 3 
+                                    self.commands[:, :3] * self.commands_scale, # 控制指令 3 ， 前两列是线速度，第三列是角速度
+                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos, # 节点位置 12 
+                                    self.dof_vel * self.obs_scales.dof_vel, # 节点速度 12
+                                    self.actions # 上次的动作目标 12 
+                                    ),dim=-1) # 这样基础的观测输入就是 48 ， 如果要进一步增加输入就需要下面的内容了。
         # add perceptive inputs if not blind
-        if self.cfg.terrain.measure_heights:
+        if self.cfg.terrain.measure_heights: # 这些高度的测量点有 x:17 \times y:11 = 187 个点； 两者一共是235个点。
             heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
             self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
         # add noise if needed
@@ -882,12 +882,12 @@ class LeggedRobot(BaseTask):
 
     def _reward_tracking_lin_vel(self):
         # Tracking of linear velocity commands (xy axes)
-        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1) # 前两列是线速度，第三列是角速度
         return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)
     
     def _reward_tracking_ang_vel(self):
         # Tracking of angular velocity commands (yaw) 
-        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2]) # 前两列是线速度，第三列是角速度
         return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
 
     def _reward_feet_air_time(self):
