@@ -50,4 +50,5 @@ class A1PDJCfgPPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
     class runner(LeggedRobotCfgPPO.runner):
         run_name = ''
+        max_iterations = 50000 # number of policy updates
         experiment_name = 'a1_pdj'

@@ -7,3 +7,5 @@ cd ~/legged_gym_env/legged_gym/legged_gym/scripts
 python play.py --task=plane_go2
 
 
+python play.py --task=rough_go2 --checkpoint=750 --num_envs=64
+

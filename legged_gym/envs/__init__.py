@@ -41,7 +41,7 @@ from .cassie.cassie_config import CassieRoughCfg, CassieRoughCfgPPO
 from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from .a1_pdj.a1_pdj_config import A1PDJCfg, A1PDJCfgPPO
 from .anymal_cpdj.anymal_cpdj_config import AnymalCPDJCfg, AnymalCPDJCfgPPO
-# from .go2.go2_config import Go2RoughCfg, Go2RoughCfgPPO
+from .go2.go2_rough_config import Go2RoughCfg, Go2RoughCfgPPO
 from .go2.go2_config import Go2PlaneCfg, Go2PlaneCfgPPO
 
 import os
@@ -57,3 +57,4 @@ task_registry.register("a1_pdj",LeggedRobot,A1PDJCfg(),A1PDJCfgPPO())
 task_registry.register("anymal_cpdj",AnymalPDJ, AnymalCPDJCfg(),AnymalCPDJCfgPPO())
 
 task_registry.register( "plane_go2", LeggedRobot, Go2PlaneCfg(), Go2PlaneCfgPPO() )
+task_registry.register( "rough_go2", LeggedRobot, Go2RoughCfg(), Go2RoughCfgPPO() )
