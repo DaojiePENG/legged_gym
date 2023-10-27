@@ -36,9 +36,11 @@ class Go2RoughCfg( LeggedRobotCfg ):
         # num_actions = 12 
         # num_observations = 48
     
-    # class terrain( LeggedRobotCfg.terrain ):
-    #     mesh_type = 'plane'
-    #     measure_heights = False # False: 基础的 48 个输入信息； True： 额外添加 187 个高度感知信息，共 235 个点； 
+    class terrain( LeggedRobotCfg.terrain ):
+        # mesh_type = 'plane'
+        # measure_heights = False # False: 基础的 48 个输入信息； True： 额外添加 187 个高度感知信息，共 235 个点； 
+        # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, gap_terrain, pit_terrain]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1] # 这样更改期待能够看到剩下的两种地形
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.33] # x,y,z [m]

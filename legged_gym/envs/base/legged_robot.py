@@ -424,14 +424,20 @@ class LeggedRobot(BaseTask):
 
         Args:
             env_ids (List[int]): ids of environments being reset
+
+        1. 完成任务较好的机器人升级，送到更困难的地形上去；
+        2. 完成任务太差的机器人降级，送到更简单的地形上去；
+        3. 完成最高登记难度的机器人，随机送到基础上的位置；
+
+        具体的实现相关的数据结构还需要进一步理解一下；
         """
         # Implement Terrain curriculum
         if not self.init_done:
             # don't change on initial reset
             return
-        distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
+        distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1) # 计算机器人到原点的距离，离得越远说明任务完成的越好；
         # robots that walked far enough progress to harder terains
-        move_up = distance > self.terrain.env_length / 2
+        move_up = distance > self.terrain.env_length / 2 # 距离大于小地形长度的一半，说明已经完成的很好了，跑到了别的地形去了；
         # robots that walked less than half of their required distance go to simpler terrains
         move_down = (distance < torch.norm(self.commands[env_ids, :2], dim=1)*self.max_episode_length_s*0.5) * ~move_up
         self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
@@ -448,7 +454,14 @@ class LeggedRobot(BaseTask):
             env_ids (List[int]): ids of environments being reset
         """
         # If the tracking reward is above 80% of the maximum, increase the range of commands
-        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]:
+        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]: # tracking_lin_vel 默认值是 1 ；
+            '''
+            torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length 计算的是每一轮中平均每个片段的奖励；
+            self.max_episode_length是每一轮训练中刷新的总次数；
+
+            command_ranges["lin_vel_x"][0]/[1]分别代表x方向速度的最大值和最小值；
+            下面就是在更新x方向速度随机取值的范围；
+            '''
             self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
             self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
 
@@ -503,8 +516,8 @@ class LeggedRobot(BaseTask):
         self.common_step_counter = 0
         self.extras = {}
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
-        self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
-        self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
+        self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1)) # 定义重力方向 up_axis_idx=1 为y轴方向；up_axis_idx=2 为z轴方向；这里的 -1 不知道是不是指的反方向的意思；
+        self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1)) # 定义前进方向，这里是 x 轴；
         self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
@@ -613,6 +626,7 @@ class LeggedRobot(BaseTask):
         tm_params.static_friction = self.cfg.terrain.static_friction
         tm_params.dynamic_friction = self.cfg.terrain.dynamic_friction
         tm_params.restitution = self.cfg.terrain.restitution
+        # 这里可能需要关注 gym 提供的API的使用方法；
         self.gym.add_triangle_mesh(self.sim, self.terrain.vertices.flatten(order='C'), self.terrain.triangles.flatten(order='C'), tm_params)   
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
 
@@ -629,7 +643,7 @@ class LeggedRobot(BaseTask):
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 
-        asset_options = gymapi.AssetOptions()
+        asset_options = gymapi.AssetOptions() # 英伟达 isaac gym 提供的关于仿真对象的可选设置参数接口；
         asset_options.default_dof_drive_mode = self.cfg.asset.default_dof_drive_mode
         asset_options.collapse_fixed_joints = self.cfg.asset.collapse_fixed_joints
         asset_options.replace_cylinder_with_capsule = self.cfg.asset.replace_cylinder_with_capsule
@@ -704,6 +718,10 @@ class LeggedRobot(BaseTask):
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
+            '''
+            调用 gym 接口，检查每一个终止条件（由 termination_contact_names 定义），
+            并将标号分别保存在 termination_contact_indices 的0维空间中，
+            '''
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
     def _get_env_origins(self):
@@ -734,14 +752,14 @@ class LeggedRobot(BaseTask):
             self.env_origins[:, 2] = 0.
 
     def _parse_cfg(self, cfg):
-        self.dt = self.cfg.control.decimation * self.sim_params.dt
+        self.dt = self.cfg.control.decimation * self.sim_params.dt # 决定训练的刷新频率，如文献上说是 50 Hz； sim_params 是从 legged_robot 父类初始化来的；
         self.obs_scales = self.cfg.normalization.obs_scales
-        self.reward_scales = class_to_dict(self.cfg.rewards.scales)
+        self.reward_scales = class_to_dict(self.cfg.rewards.scales) # 这是一个 rewards 类， 里面包含了一些列奖励的缩放；
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
         if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             self.cfg.terrain.curriculum = False
-        self.max_episode_length_s = self.cfg.env.episode_length_s
-        self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
+        self.max_episode_length_s = self.cfg.env.episode_length_s # 以秒为单位的一轮训练时间长度，默认为 20 秒；
+        self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt) # 一轮训练中刷新的次数；由总时长/单位时长 计算得到；
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
