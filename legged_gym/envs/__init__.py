@@ -44,6 +44,7 @@ from .anymal_cpdj.anymal_cpdj_config import AnymalCPDJCfg, AnymalCPDJCfgPPO
 from .go2.go2_rough_config import Go2RoughCfg, Go2RoughCfgPPO
 from .go2.go2_config import Go2PlaneCfg, Go2PlaneCfgPPO
 from .go2.go2_rough_propri_config import Go2RoughPropriCfg, Go2RoughPropriCfgPPO
+from .go2.go2_mixed_config import Go2MixedCfg, Go2MixedCfgPPO
 
 import os
 
@@ -60,5 +61,6 @@ task_registry.register("anymal_cpdj",AnymalPDJ, AnymalCPDJCfg(),AnymalCPDJCfgPPO
 task_registry.register( "plane_go2", LeggedRobot, Go2PlaneCfg(), Go2PlaneCfgPPO() )
 task_registry.register( "rough_go2", LeggedRobot, Go2RoughCfg(), Go2RoughCfgPPO() )
 task_registry.register( "rough_propri_go2", LeggedRobot, Go2RoughPropriCfg(), Go2RoughPropriCfgPPO() )
+task_registry.register( "mixed_go2", LeggedRobot, Go2MixedCfg(), Go2MixedCfgPPO() )
 
 

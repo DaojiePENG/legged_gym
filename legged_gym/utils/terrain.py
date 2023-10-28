@@ -157,8 +157,8 @@ class Terrain:
         discrete_obstacles_height = 0.05 + difficulty * 0.2 # 离散随机方块障碍的方块高度；
         stepping_stones_size = 1.5 * (1.05 - difficulty)
         stone_distance = 0.05 if difficulty==0 else 0.1
-        gap_size = 1. * difficulty
-        pit_depth = 1. * difficulty
+        gap_size = 0.05 + 0.5 * difficulty # 修改降低难度
+        pit_depth = 0.05 + 0.5 * difficulty # 修改降低难度
         '''
         choice:
         [0.     -0.05   )    下坡；
@@ -256,7 +256,7 @@ def gap_terrain(terrain, gap_size, platform_size=1.):
     y1 = (terrain.width - platform_size) // 2
     y2 = y1 + gap_size
    
-    terrain.height_field_raw[center_x-x2 : center_x + x2, center_y-y2 : center_y + y2] = -1000
+    terrain.height_field_raw[center_x-x2 : center_x + x2, center_y-y2 : center_y + y2] = -5.0/terrain.vertical_scale # 将m转化成像素点数；
     terrain.height_field_raw[center_x-x1 : center_x + x1, center_y-y1 : center_y + y1] = 0
 
 def pit_terrain(terrain, depth, platform_size=1.):
