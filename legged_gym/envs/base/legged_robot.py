@@ -65,12 +65,13 @@ class LeggedRobot(BaseTask):
         self.cfg = cfg
         self.sim_params = sim_params
         self.height_samples = None
-        self.debug_viz = False
+        self.debug_viz = False # 这个参数决定是否在仿真时绘制和显示高度测量点； 
         self.init_done = False
-        self._parse_cfg(self.cfg)
-        super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
+        self._parse_cfg(self.cfg) # 将config文件中的相关变量拿出来作为类的 self. 局部变量；
+        super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless) # 调用父类的初始化函数；
 
         if not self.headless:
+            # 如果不是 headless 的情况，就按照 config 文件中 viewer 定义的参数放置观查相机镜头；
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
         self._prepare_reward_function()
@@ -86,14 +87,18 @@ class LeggedRobot(BaseTask):
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
         self.render()
-        for _ in range(self.cfg.control.decimation):
-            self.torques = self._compute_torques(self.actions).view(self.torques.shape)
-            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
-            self.gym.simulate(self.sim)
+        for _ in range(self.cfg.control.decimation): 
+            '''
+            这里 decimation=4；
+            这意味着这个 torque 计算->传入仿真->运行仿真->刷新状态张量 的过程需要执行4次；然后才整形后续物理处理；
+            '''
+            self.torques = self._compute_torques(self.actions).view(self.torques.shape) # 根据输入的动作指令，计算出相应的扭矩，准备传入仿真空间；
+            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques)) # 将计算出来的扭矩传入仿真系统中；用这个函数来驱动仿真空间的里面的机器人！
+            self.gym.simulate(self.sim) # 进行一次仿真，让机器人按照给定的扭矩在仿真空间中进行演化；
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
-            self.gym.refresh_dof_state_tensor(self.sim)
-        self.post_physics_step()
+            self.gym.refresh_dof_state_tensor(self.sim) # 刷新 gym 仿真空间中的各个自由度状态张量；
+        self.post_physics_step() # 主要是检查终止条件、计算观测值、计算奖励；重新随机采样新的指令、计算测量到的高度值、添加运动干扰（随机推动机器人）；
 
         # return clipped obs, clipped states (None), rewards, dones and infos
         clip_obs = self.cfg.normalization.clip_observations
@@ -114,10 +119,10 @@ class LeggedRobot(BaseTask):
         self.common_step_counter += 1
 
         # prepare quantities
-        self.base_quat[:] = self.root_states[:, 3:7]
-        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
-        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.base_quat[:] = self.root_states[:, 3:7] # base rotation 
+        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10]) # 转化后的相对于本体的线速度，m/s
+        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13]) # 转化后的相对于本体的角速度，m/s
+        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec) # 转化后的相对于本体的重力投影；实际中应该由IMU中的重力传感器提供；
 
         self._post_physics_step_callback()
 
@@ -133,6 +138,7 @@ class LeggedRobot(BaseTask):
         self.last_root_vel[:] = self.root_states[:, 7:13]
 
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
+            '''绘制和显示高度测量点'''
             self._draw_debug_vis()
 
     def check_termination(self):
@@ -194,14 +200,18 @@ class LeggedRobot(BaseTask):
         """
         self.rew_buf[:] = 0.
         for i in range(len(self.reward_functions)):
+            '''
+            _prepare_reward_function 已经将奖励函数和函数名打包好了；
+            奖励函数的命名需遵循： func_name = '_reward_' + name
+            '''
             name = self.reward_names[i]
-            rew = self.reward_functions[i]() * self.reward_scales[name]
-            self.rew_buf += rew
-            self.episode_sums[name] += rew
+            rew = self.reward_functions[i]() * self.reward_scales[name]   # 直接通过索引就可以调用相应的函数了，这归功于 getattr(self, func_name)；
+            self.rew_buf += rew # 将所有的奖励相加进行累积；
+            self.episode_sums[name] += rew # 将每一片段的奖励按名称进行相加累积；
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
         # add termination reward after clipping
-        if "termination" in self.reward_scales:
+        if "termination" in self.reward_scales: # 为什么要在clip后再添加终止奖励呢？
             rew = self._reward_termination() * self.reward_scales["termination"]
             self.rew_buf += rew
             self.episode_sums["termination"] += rew
@@ -210,9 +220,9 @@ class LeggedRobot(BaseTask):
         """ Computes observations
         在这里定义了 observation 的结构，也为它的内存 obs_buf 进行了赋值。
         """
-        self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel, # 基体线速度 3
-                                    self.base_ang_vel  * self.obs_scales.ang_vel, # 基体角速度 3
-                                    self.projected_gravity, # 基体重力 3 
+        self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel, # 基体线速度 3 ；从仿真空间中计算得出的归一化的速度 self.base_lin_vel 乘上速度缩放 config 中定义的 self.obs_scales.lin_vel
+                                    self.base_ang_vel  * self.obs_scales.ang_vel, # 基体角速度 3 ； 解析同上；这里的速度跟实际速度是如何对应的，这有单位吗？看了官方API没说单位，那就默认是标准单位 m/s；
+                                    self.projected_gravity, # 基体重力 3 ；实际上这个 self.obs_scales.xxx 应该只在输入神经网络的时候用到了；
                                     self.commands[:, :3] * self.commands_scale, # 控制指令 3 ， 前两列是线速度，第三列是角速度
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos, # 节点位置 12 
                                     self.dof_vel * self.obs_scales.dof_vel, # 节点速度 12
@@ -220,14 +230,23 @@ class LeggedRobot(BaseTask):
                                     ),dim=-1) # 这样基础的观测输入就是 48 ， 如果要进一步增加输入就需要下面的内容了。
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights: # 这些高度的测量点有 x:17 \times y:11 = 187 个点； 两者一共是235个点。
-            heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
-            self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1)
+            '''
+            在有地形感知的情况下添加高度感知信息；
+
+            这里把高度测量值限制在 [-1.，1.]之间；
+            这里应该是默认机器人高度是 0.5m 所以直接减了个 0.5 变成以接触到的地面为起点；然后减去测量到的高度值得到相对于机器人的地表凹凸情况（也就是机器人自身雷达传感器可以的观测数据）；
+            '''
+            heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements # 实际上这个 self.obs_scales.xxx 应该只在输入神经网络的时候用到了；
+            self.obs_buf = torch.cat((self.obs_buf, heights), dim=-1) # 
         # add noise if needed
         if self.add_noise:
-            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
+            '''如果想拓展感知信息数量，也需要同时考虑这部分；'''
+            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec # torch.rand_like(self.obs_buf) 返回 [0，1] 之间形状一样的随机数矩阵；
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments
+
+        该函数由 base_task 的初始化函数直接调用；
         """
         self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
         self.sim = self.gym.create_sim(self.sim_device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
@@ -253,6 +272,14 @@ class LeggedRobot(BaseTask):
 
     #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
+        '''
+        实现对刚体性质的调控；
+        
+        这仅实现了刚体摩擦力的随机化，这里的实现并没有区分具体是哪个刚体，而是对所有的都随机设置了；
+        实现方式很巧妙，使用了 bucket 来作为容器，然后实体的参数从 bucket 里面选：
+            也就是说用 bucket_ids 的数来选择 friction_buckets 里面的数； 
+            这样做就避免了对于上千个实例需要生成上千个随机数的需求，总共随机数也就64个就够了；
+        '''
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
             Called During environment creation.
             Base behavior: randomizes the friction of each environment
@@ -269,15 +296,22 @@ class LeggedRobot(BaseTask):
                 # prepare friction randomization
                 friction_range = self.cfg.domain_rand.friction_range
                 num_buckets = 64
-                bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
-                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
-                self.friction_coeffs = friction_buckets[bucket_ids]
+                bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1)) # 随机生成 [0,64] 之间的正数，形状为 num_envs 行，1 列；
+                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu') # 形状为 64 行，1 列；
+                self.friction_coeffs = friction_buckets[bucket_ids] # 矩阵索引，最终的返回值从被索引矩阵中按照索引号给出；返回的形状和索引号的形状一样；也就是形状为 num_envs 行，1 列；
 
             for s in range(len(props)):
                 props[s].friction = self.friction_coeffs[env_id]
         return props
 
     def _process_dof_props(self, props, env_id):
+        '''
+        props 来自于 gym.get_asset_dof_properties(robot_asset) 返回的来自导入的 urdf 中的特性信息；
+
+        没有看到改变这个 props 的代码，怎么做到的改变其返回值的？
+        实际上就是没改变，只是将 urdf 中导入的信息给保存了下来，变成类的局部变量来给其他地方用（创建了节点软约束，用来奖励的计算）；
+        所以想要随机这些特性的话需要自己另写代码实现；
+        '''
         """ Callback allowing to store/change/randomize the DOF properties of each environment.
             Called During environment creation.
             Base behavior: stores position, velocity and torques limits defined in the URDF
@@ -293,7 +327,7 @@ class LeggedRobot(BaseTask):
             self.dof_pos_limits = torch.zeros(self.num_dof, 2, dtype=torch.float, device=self.device, requires_grad=False)
             self.dof_vel_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
             self.torque_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-            for i in range(len(props)):
+            for i in range(len(props)): # 遍历 props 包含的所有项；
                 self.dof_pos_limits[i, 0] = props["lower"][i].item()
                 self.dof_pos_limits[i, 1] = props["upper"][i].item()
                 self.dof_vel_limits[i] = props["velocity"][i].item()
@@ -319,6 +353,12 @@ class LeggedRobot(BaseTask):
         return props
     
     def _post_physics_step_callback(self):
+        '''
+        这个函数干三件事，也分别对应着三个函数：
+            重新随机采样新的指令 _resample_commands(env_ids)；
+            计算测量到的高度值 _get_heights()；
+            添加运动干扰，随机推动机器人 _push_robots()；
+        '''
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
@@ -352,6 +392,9 @@ class LeggedRobot(BaseTask):
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
 
     def _compute_torques(self, actions):
+        '''
+        这里用来选择电机的控制方式，根据控制方式和 actions 目标，计算应该输出的扭矩数值，然后将扭矩数值传入仿真空间中进行仿真；
+        '''
         """ Compute torques from actions.
             Actions can be interpreted as position or velocity targets given to a PD controller, or directly as scaled torques.
             [NOTE]: torques must have the same dimension as the number of DOFs, even if some DOFs are not actuated.
@@ -390,6 +433,7 @@ class LeggedRobot(BaseTask):
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        
     def _reset_root_states(self, env_ids):
         """ Resets ROOT states position and velocities of selected environmments
             Sets base position based on the curriculum
@@ -416,7 +460,9 @@ class LeggedRobot(BaseTask):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
         max_vel = self.cfg.domain_rand.max_push_vel_xy
-        self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
+        self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y 
+        # 也就是说从外部强制给它赋值一个初速度；但是要是本身 root_states 就不为 0 的情况呢？ 应该是在原有的速度上加上一个额外的推动吧？
+        # 或者说这默认机器人是在静止状态被推动的？估计是。
         self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
     def _update_terrain_curriculum(self, env_ids):
@@ -465,8 +511,12 @@ class LeggedRobot(BaseTask):
             self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
             self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
 
-
     def _get_noise_scale_vec(self, cfg):
+        '''
+        关于给感知信息添加噪声的定义都在这里完成；
+
+        注：如果要拓展感知信息量，也要同时拓展相关的向量；
+        '''
         """ Sets a vector used to scale the noise added to the observations.
             [NOTE]: Must be adapted when changing the observations structure
 
@@ -533,7 +583,7 @@ class LeggedRobot(BaseTask):
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         if self.cfg.terrain.measure_heights:
-            self.height_points = self._init_height_points()
+            self.height_points = self._init_height_points() # 高度数据赋值就是 height_points[:,:,2]
         self.measured_heights = 0
 
         # joint positions offsets and PD gains
@@ -577,8 +627,8 @@ class LeggedRobot(BaseTask):
             if name=="termination":
                 continue
             self.reward_names.append(name)
-            name = '_reward_' + name
-            self.reward_functions.append(getattr(self, name))
+            func_name = '_reward_' + name
+            self.reward_functions.append(getattr(self, func_name))
 
         # reward episode sums
         self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
@@ -614,18 +664,22 @@ class LeggedRobot(BaseTask):
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
 
     def _create_trimesh(self):
+        '''
+        这种类型的定义应该是可以使得地图斜边更平滑；而高度图形式就比较粗糙，如果像素分辨率低的话可能会看到一个个小像素柱子；这可能是为什么倾向于使用 trimesh ;
+        trimesh 的相关知识可以到 API 或者网上了解一下；
+        '''
         """ Adds a triangle mesh terrain to the simulation, sets parameters based on the cfg.
         # """
-        tm_params = gymapi.TriangleMeshParams()
+        tm_params = gymapi.TriangleMeshParams() # 到 API 和 terrain_utils 相关地方查看参数的基本定义；
         tm_params.nb_vertices = self.terrain.vertices.shape[0]
         tm_params.nb_triangles = self.terrain.triangles.shape[0]
 
-        tm_params.transform.p.x = -self.terrain.cfg.border_size 
-        tm_params.transform.p.y = -self.terrain.cfg.border_size
-        tm_params.transform.p.z = 0.0
-        tm_params.static_friction = self.cfg.terrain.static_friction
-        tm_params.dynamic_friction = self.cfg.terrain.dynamic_friction
-        tm_params.restitution = self.cfg.terrain.restitution
+        tm_params.transform.p.x = -self.terrain.cfg.border_size # 设定在 isaacgym 中绘制地图时 x 方向偏移；也就是把边界偏出来的意思；
+        tm_params.transform.p.y = -self.terrain.cfg.border_size # 设定在 isaacgym 中绘制地图时 y 方向偏移；
+        tm_params.transform.p.z = 0.0 # 设定在 isaacgym 中绘制地图时 z 方向偏移；
+        tm_params.static_friction = self.cfg.terrain.static_friction # 地图表面的静摩擦力；
+        tm_params.dynamic_friction = self.cfg.terrain.dynamic_friction # 地图表面的动摩擦力；
+        tm_params.restitution = self.cfg.terrain.restitution # 地图表面的弹性恢复系数；
         # 这里可能需要关注 gym 提供的API的使用方法；
         self.gym.add_triangle_mesh(self.sim, self.terrain.vertices.flatten(order='C'), self.terrain.triangles.flatten(order='C'), tm_params)   
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
@@ -680,9 +734,9 @@ class LeggedRobot(BaseTask):
             # 从 config 文件中提取定义的终止碰撞条件，这里是名称定义，下面有 gym 中的实现
             termination_contact_names.extend([s for s in body_names if name in s])
 
-        base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
+        base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel # 把这初始化状态全部这样直接加起来有什么意义？
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
-        start_pose = gymapi.Transform()
+        start_pose = gymapi.Transform() # 按照 config 文件中的设置来初始化内容 base 主体姿态；施加空间转换的变换；
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
         self._get_env_origins()
@@ -691,40 +745,71 @@ class LeggedRobot(BaseTask):
         self.actor_handles = []
         self.envs = []
         for i in range(self.num_envs):
+            '''
+            这部分按照设定的参数来创建 envs 然后返回相应的 env_handle 句柄到 envs ；
+            同时也用 env_handle 创建了 actor 并返回相应的 actor_handle 句柄到 actor_handles ；
+
+            1. 实现了对 env 的创建和初始化其在地图上的位置设定，实际的位置分配在 self._get_env_origins() 函数中分配，关键变量为 self.env_origins；
+            2. 实现了对 env、actor 的特性调整，比如摩擦力随机化（同时也从仿真空间中获取相应参数值，为计算奖励做准备）； 
+            '''
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
-            pos = self.env_origins[i].clone()
-            pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
-            start_pose.p = gymapi.Vec3(*pos)
+            pos = self.env_origins[i].clone() # 将第 i 个地形的中心 x,y 坐标值设置为第 i 个 env 的初始化起点；
+            pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1) # 初始化的具体位置进行一定的随机化，这也就是为什么初始会看到一簇一簇的机器人；
+            start_pose.p = gymapi.Vec3(*pos) # 用上面的地形相关的位置来初始化 base 的位置；这个岂不是会把上面的设置给覆盖掉？
+            # 所以上面那句 start_pose.p = gymapi.Vec3(*self.base_init_state[:3]) 没起作用呀？
+            # 注意这里 start_pose 是 gymapi.Transform() 类型的，所以每次赋值实际上就是施加一次变换，不冲突；感觉又有点不太对，差看了下就是直接赋值的；
                 
-            rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
-            self.gym.set_asset_rigid_shape_properties(robot_asset, rigid_shape_props)
+            rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)# 1. 由于前面将机器人实体导入仿真时已经获得了 rigid_shape_props_asset 信息，因此这里直接对其加工处理；
+            self.gym.set_asset_rigid_shape_properties(robot_asset, rigid_shape_props)# 2. 然后设置回仿真；
             actor_handle = self.gym.create_actor(env_handle, robot_asset, start_pose, self.cfg.asset.name, i, self.cfg.asset.self_collisions, 0)
-            dof_props = self._process_dof_props(dof_props_asset, i)
-            self.gym.set_actor_dof_properties(env_handle, actor_handle, dof_props)
-            body_props = self.gym.get_actor_rigid_body_properties(env_handle, actor_handle)
-            body_props = self._process_rigid_body_props(body_props, i)
-            self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
+            dof_props = self._process_dof_props(dof_props_asset, i) # 1. 由于前面将机器人实体导入仿真时已经获得了 dof_props_asset 信息，因此这里直接对其加工处理；
+            self.gym.set_actor_dof_properties(env_handle, actor_handle, dof_props) # 2. 然后设置回仿真；
+            body_props = self.gym.get_actor_rigid_body_properties(env_handle, actor_handle) # 1. 获取第 i 个实体物理信息；
+            body_props = self._process_rigid_body_props(body_props, i) # 2. 对其中的参数进行随机化，此版本函数实现了对重力参数进行随机化；
+            self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True) # 3. 将处理后的实体物理参数设置回仿真；
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
 
+        # 下面几个 for 循环提供了一些需要计算奖励的特殊实体的索引标号，比如脚部、会被惩罚的接触实体、会导致训练重启的实体名等；
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
+            '''
+            调用 gym 接口，检查每一个腿部接触条件（由 feet_names 定义），
+            并将标号分别保存在 feet_indices 的1维空间中，
+            随后在若干函数中被使用，如计算脚部摆动、脚部悬空时间、脚部接触力奖励等等；
+
+            注：这里只是提供了索引，并非实际值。实际值需要从 gym state 中获取；
+            '''
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
 
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
+            '''
+            调用 gym 接口，检查每一个惩罚条件（由 penalized_contact_names 定义），
+            并将标号分别保存在 penalised_contact_indices 的1维空间中，
+            随后在 _reward_collision(self) 函数中被使用；
+
+            注：这里只是提供了索引，并非实际值。实际值需要从 gym state 中获取；
+            '''
             self.penalised_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], penalized_contact_names[i])
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
             '''
             调用 gym 接口，检查每一个终止条件（由 termination_contact_names 定义），
-            并将标号分别保存在 termination_contact_indices 的0维空间中，
+            并将标号分别保存在 termination_contact_indices 的1维空间中，
+            随后在 check_termination(self) 函数中被使用；
+
+            注：这里只是提供了索引，并非实际值。实际值需要从 gym state 中获取；
             '''
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
     def _get_env_origins(self):
+        '''
+        重要变量： env_origins，形状为 num_envs 行，3列； env 初始化时会按照它定义的位置在仿真环境中初始化；
+        有自定义地形的情况下以自定义的地形中心为取值准；没有自定义地形时，均匀的网格化取值布局；这应该是我想实现的确定不同 env 所处的具体地形的关键；
+        '''
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
         """
@@ -732,12 +817,16 @@ class LeggedRobot(BaseTask):
             self.custom_origins = True
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
             # put robots at the origins defined by the terrain
-            max_init_level = self.cfg.terrain.max_init_terrain_level
-            if not self.cfg.terrain.curriculum: max_init_level = self.cfg.terrain.num_rows - 1
-            self.terrain_levels = torch.randint(0, max_init_level+1, (self.num_envs,), device=self.device)
+            max_init_level = self.cfg.terrain.max_init_terrain_level # 有课程时指定的最大初始化等级；
+            if not self.cfg.terrain.curriculum: max_init_level = self.cfg.terrain.num_rows - 1 # 如果没设置课程，那就每个小地形快都放置一点实体；
+            self.terrain_levels = torch.randint(0, max_init_level+1, (self.num_envs,), device=self.device) # 随机生成了初始化难度；形状为 num_envs 行，1 列；
             self.terrain_types = torch.div(torch.arange(self.num_envs, device=self.device), (self.num_envs/self.cfg.terrain.num_cols), rounding_mode='floor').to(torch.long)
             self.max_terrain_level = self.cfg.terrain.num_rows
-            self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
+            self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float) # 从地形定义类中获取了 num_rows 行，num_cols 列，3 的小地形中点；
+            '''self.terrain_levels： 行数选择； self.terrain_types 列数选择；
+            最终返回值是 num_envs 个 3 维坐标向量；
+            我想关注的是实体在第几列；只需要在指令采样的时候对 env_idx 的编号做一个判断就可以直到它在哪一列地形 (terrain_idx in [0, num_cols-1]) 了，
+            即做如下索引： terrain_idx = self.terrain_types[env_idx]。然后就可以针对不同的地形做出相应的处理了。'''
             self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
         else:
             self.custom_origins = False
@@ -754,16 +843,20 @@ class LeggedRobot(BaseTask):
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt # 决定训练的刷新频率，如文献上说是 50 Hz； sim_params 是从 legged_robot 父类初始化来的；
         self.obs_scales = self.cfg.normalization.obs_scales
-        self.reward_scales = class_to_dict(self.cfg.rewards.scales) # 这是一个 rewards 类， 里面包含了一些列奖励的缩放；
+        self.reward_scales = class_to_dict(self.cfg.rewards.scales) # 这是一个 rewards 类， 里面包含了一些列奖励的缩放；这样变成一个字典，可以用来索引奖励函数；
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
         if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             self.cfg.terrain.curriculum = False
         self.max_episode_length_s = self.cfg.env.episode_length_s # 以秒为单位的一轮训练时间长度，默认为 20 秒；
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt) # 一轮训练中刷新的次数；由总时长/单位时长 计算得到；
 
-        self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
+        self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt) # 从 config 中定义新的随机推动机器人变量；
 
     def _draw_debug_vis(self):
+        '''
+        用于向 Isaacgym 仿真平台内绘制图形；
+        这里实现的是实时显示机器人周围的环境测量点；
+        '''
         """ Draws visualizations for dubugging (slows down simulation a lot).
             Default behaviour: draws height measurement points
         """
@@ -772,19 +865,24 @@ class LeggedRobot(BaseTask):
             return
         self.gym.clear_lines(self.viewer)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
-        sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
+        sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0)) # 定义绘制点的形状、大小、颜色等特性；位置属性将在下面定义；
         for i in range(self.num_envs):
+            '''遍历所有的 env 绘制'''
             base_pos = (self.root_states[i, :3]).cpu().numpy()
-            heights = self.measured_heights[i].cpu().numpy()
-            height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
+            heights = self.measured_heights[i].cpu().numpy() # 取测量得到的像素级高度值的第 i 行；
+            height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy() # 随所有的高度坐标点进行旋转和平移操作； 形状： 1 行， num_point 列，每个元素有(x,y,z)三个值；
             for j in range(heights.shape[0]):
-                x = height_points[j, 0] + base_pos[0]
+                x = height_points[j, 0] + base_pos[0] # 第 j 列的 0 就是 x 坐标； 1 就是 y 坐标； 2 就是 z 坐标，但由于没赋值因此用别的代替；
                 y = height_points[j, 1] + base_pos[1]
-                z = heights[j]
-                sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
+                z = heights[j] # 直接使用之前处理过的高度数据，第 j 个就行了。整体就是 第 i 行的第 j 个位置上的 z 值；
+                sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None) # 将 cpu 下的参数转化为 gpu 下的格式；
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], sphere_pose) 
 
     def _init_height_points(self):
+        '''
+        初始化高度点；
+        通过 config 中定义的 measured_points_y, measured_points_x 的 mesh 化来生成测量网表的基本映射基础；
+        '''
         """ Returns points at which the height measurments are sampled (in base frame)
 
         Returns:
@@ -794,13 +892,17 @@ class LeggedRobot(BaseTask):
         x = torch.tensor(self.cfg.terrain.measured_points_x, device=self.device, requires_grad=False)
         grid_x, grid_y = torch.meshgrid(x, y)
 
-        self.num_height_points = grid_x.numel()
+        self.num_height_points = grid_x.numel() # 计测量算总点数
         points = torch.zeros(self.num_envs, self.num_height_points, 3, device=self.device, requires_grad=False)
         points[:, :, 0] = grid_x.flatten()
         points[:, :, 1] = grid_y.flatten()
-        return points
+        return points # 高度数据就是 points[:, :, 2]
 
     def _get_heights(self, env_ids=None):
+        '''
+        返回值是一个 mesh 化的 z 测量值，也就是二维网表（形状：横坐标为 envs 行, 纵坐标为 num_points 列，值：不过这里只是第三维的 z 分量）；
+        也就是同时返回所有或者选定的 env 的 num_points 个高度测量值； 对于单个 env 来说，结果排成了一排， 也即 flatten 化了；
+        '''
         """ Samples heights of the terrain at required points around each robot.
             The points are offset by the base's position and rotated by the base's yaw
 
@@ -820,22 +922,24 @@ class LeggedRobot(BaseTask):
             raise NameError("Can't measure height with terrain mesh type 'none'")
 
         if env_ids:
-            # 这里为什么要添加 yaw 呢？
+            # 这里为什么要添加 yaw 呢？ points 需要经过转换，最基本的是需要结合每个 env 自己的空间坐标位置和旋转姿态进行调整；
             points = quat_apply_yaw(self.base_quat[env_ids].repeat(1, self.num_height_points), self.height_points[env_ids]) + (self.root_states[env_ids, :3]).unsqueeze(1)
         else:
+            # 默认情况下为所有的 envs 测量索求地面高度数据， self.height_points 是相对于机器人坐标系定义的目标测量点（到此为止仅含 x,y 的 mesh 结果部分，z 值下面将计算）；
+            # ------------- base_quat 重复 num_height_points 次后并行作用在每个高度点上（旋转操作）----------------加上所有 env 的当前坐标（位移操作）---------------------
             points = quat_apply_yaw(self.base_quat.repeat(1, self.num_height_points), self.height_points) + (self.root_states[:, :3]).unsqueeze(1)
 
-        points += self.terrain.cfg.border_size
-        points = (points/self.terrain.cfg.horizontal_scale).long()
-        px = points[:, :, 0].view(-1)
-        py = points[:, :, 1].view(-1)
+        points += self.terrain.cfg.border_size # 因为像素点级的地形图数据不含边界信息，所以要对 x,y 的点都进行相应的偏移；到此为止还都是以 m 为单位的；
+        points = (points/self.terrain.cfg.horizontal_scale).long() # 将 m 为单位的长度转换为像素点数量；
+        px = points[:, :, 0].view(-1) # 提取第三维的 x 分量；
+        py = points[:, :, 1].view(-1) # 提取第三维的 y 分量；
         px = torch.clip(px, 0, self.height_samples.shape[0]-2) # 将 px 的值限制在 0 到 self.height_samples.shape[0]-2 之间；
         py = torch.clip(py, 0, self.height_samples.shape[1]-2)
 
-        # 为什么要有下面的操作呢？
-        heights1 = self.height_samples[px, py]
-        heights2 = self.height_samples[px+1, py]
-        heights3 = self.height_samples[px, py+1]
+        # 为什么要有下面的操作呢？# 这里的 height_samples 就是昨天看的关于 terrain 部分的整个大地图的像素级 z 高度值；
+        heights1 = self.height_samples[px, py] # 这个输出就是一个 mesh 化的 z 测量值，也就是二维网表（形状：横坐标为 envs 行, 纵坐标为 num_points 列，值：不过这里只是第三维的 z 分量）；
+        heights2 = self.height_samples[px+1, py] # 因此这里的 px, py 都需要考虑到边界来计算在大地图中的绝对像素点位置；
+        heights3 = self.height_samples[px, py+1] # 这是测量三个近点，然后取最小值作为测量到的高度值；
         heights = torch.min(heights1, heights2)
         heights = torch.min(heights, heights3)
 
