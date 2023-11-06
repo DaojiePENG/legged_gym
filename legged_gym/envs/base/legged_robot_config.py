@@ -76,6 +76,10 @@ class LeggedRobotCfg(BaseConfig):
             lin_vel_y = [-1.0, 1.0]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
+            
+        use_selected_terrain = True # pdj添加，决定在训练时是否使用基于地形的指令控制；
+        selected_terrain_types = [6, 7, 8] # pdj添加，选择需要特殊处理的地形类型，用数字表示，可以多个；
+        use_command_list = [1, 0, 0, 0] # pdj添加，分别对应是否使用 lin_vel_x/lin_vel_y/ang_vel_yaw/heading ， 1 为使用，0 为禁止；
 
     class init_state:
         pos = [0.0, 0.0, 1.] # x,y,z [m]
@@ -126,6 +130,8 @@ class LeggedRobotCfg(BaseConfig):
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 1.
+        
+        max_push_vel_yaw = 0.1 # pdj添加特性
 
     class rewards:
         class scales:

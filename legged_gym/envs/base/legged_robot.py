@@ -376,6 +376,9 @@ class LeggedRobot(BaseTask):
             self._push_robots()
 
     def _resample_commands(self, env_ids):
+        '''
+        该函数在 _post_physics_step_callback(self) 和 reset_idx(self, env_ids) 函数中被调用；
+        '''
         """ Randommly select commands of some environments
 
         Args:
@@ -443,9 +446,14 @@ class LeggedRobot(BaseTask):
         """
         # base position
         if self.custom_origins:
+            '''
+            这里实现了随机化的初始化位置，使得在一个 小terrain 中的 env 相互之间不是完全重合的；不过方向都是一样的；
+            我可以试一下把初始化的方向也改成随机的，这样看起来就很乱了；
+            '''
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
             self.root_states[env_ids, :2] += torch_rand_float(-1., 1., (len(env_ids), 2), device=self.device) # xy position within 1m of the center
+            # self.root_states[env_ids, 5:6] += torch_rand_float(-3.14, 3.14, (len(env_ids),1),device=self.device) # z 方向在 0-360度 之间随机（头朝向随机，仅测试）；
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
